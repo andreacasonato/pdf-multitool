@@ -23,22 +23,44 @@ def validate_pdf(path_str: str) -> pypdf.PdfReader | None:
         return None
 
 
-# Merge a list of PdfReaders into a single output file
 def merge_pdfs(readers: list, output_path: Path) -> None:
     writer = pypdf.PdfWriter()
-
-    # Loop over every reader and add all its pages to the writer
     for reader in readers:
         for page in reader.pages:
             writer.add_page(page)
-
-    # Write the combined PDF to disk
-    # "wb" = write in binary mode. PDFs are binary files, not plain text
     with open(output_path, "wb") as f:
         writer.write(f)
-
     print(f"\nMerged PDF saved to: {output_path}")
     print(f"Total pages: {sum(len(r.pages) for r in readers)}")
+
+
+# Split a PDF into one file per page
+def split_pdf(reader: pypdf.PdfReader, output_dir: Path) -> None:
+    # Create the output folder if it doesn't exist
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    total = len(reader.pages)
+
+    # zfill() pads a number with leading zeros to a fixed width
+    # so page 1 of 100 becomes "001" not "1" — sorts correctly in Finder
+    width = len(str(total))
+
+    for i, page in enumerate(reader.pages):
+        # enumerate() gives us both the index (i) and the value (page)
+        # i + 1 so pages start at 1 not 0
+        page_number = str(i + 1).zfill(width)
+        output_path = output_dir / f"page_{page_number}.pdf"
+
+        # Each page gets its own writer
+        writer = pypdf.PdfWriter()
+        writer.add_page(page)
+
+        with open(output_path, "wb") as f:
+            writer.write(f)
+
+        print(f"  Saved: {output_path.name}")
+
+    print(f"\nSplit complete. {total} pages saved to: {output_dir}")
 
 
 def main():
@@ -69,12 +91,10 @@ def main():
             if reader:
                 readers.append(reader)
 
-        # Need at least 2 valid files to merge
         if len(readers) < 2:
             print("\nNeed at least 2 valid PDF files to merge.")
             return
 
-        # Resolve output path and merge
         output_path = Path(args.output).resolve()
         merge_pdfs(readers, output_path)
 
@@ -83,7 +103,10 @@ def main():
         reader = validate_pdf(args.input)
         if not reader:
             return
-        print(f"\nReady to split {len(reader.pages)} pages.")
+
+        # Resolve output dir and split
+        output_dir = Path(args.output_dir).resolve()
+        split_pdf(reader, output_dir)
 
 
 if __name__ == "__main__":

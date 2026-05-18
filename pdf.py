@@ -6,21 +6,14 @@ from pathlib import Path
 import pypdf
 
 
-# Validate a single PDF file and return a PdfReader if valid, None if not
 def validate_pdf(path_str: str) -> pypdf.PdfReader | None:
     path = Path(path_str).resolve()
-
-    # File must exist
     if not path.exists():
         print(f"  [ERROR] File not found: {path}")
         return None
-
-    # Must be a .pdf extension
     if path.suffix.lower() != ".pdf":
         print(f"  [ERROR] Not a PDF file: {path.name}")
         return None
-
-    # Try opening it. Catches corrupted or invalid PDFs
     try:
         reader = pypdf.PdfReader(str(path))
         print(f"  [OK] {path.name} ({len(reader.pages)} pages)")
@@ -28,6 +21,24 @@ def validate_pdf(path_str: str) -> pypdf.PdfReader | None:
     except Exception as e:
         print(f"  [ERROR] Could not read {path.name}: {e}")
         return None
+
+
+# Merge a list of PdfReaders into a single output file
+def merge_pdfs(readers: list, output_path: Path) -> None:
+    writer = pypdf.PdfWriter()
+
+    # Loop over every reader and add all its pages to the writer
+    for reader in readers:
+        for page in reader.pages:
+            writer.add_page(page)
+
+    # Write the combined PDF to disk
+    # "wb" = write in binary mode. PDFs are binary files, not plain text
+    with open(output_path, "wb") as f:
+        writer.write(f)
+
+    print(f"\nMerged PDF saved to: {output_path}")
+    print(f"Total pages: {sum(len(r.pages) for r in readers)}")
 
 
 def main():
@@ -50,7 +61,6 @@ def main():
         parser.print_help()
         return
 
-    # Validate inputs depending on which subcommand was chosen
     if args.command == "merge":
         print("Validating input files...")
         readers = []
@@ -59,7 +69,14 @@ def main():
             if reader:
                 readers.append(reader)
 
-        print(f"\n{len(readers)} of {len(args.inputs)} files valid.")
+        # Need at least 2 valid files to merge
+        if len(readers) < 2:
+            print("\nNeed at least 2 valid PDF files to merge.")
+            return
+
+        # Resolve output path and merge
+        output_path = Path(args.output).resolve()
+        merge_pdfs(readers, output_path)
 
     elif args.command == "split":
         print("Validating input file...")

@@ -2,24 +2,45 @@
 """PDF Multi-Tool: merge and split PDF files via CLI."""
 
 import argparse
+import logging
 from pathlib import Path
 import pypdf
 
 
+# Configure logging to write to pdf_errors.log in the project folder
+# This runs once when the script starts, before any functions are called
+logging.basicConfig(
+    filename="pdf_errors.log",       # where to write logs
+    level=logging.DEBUG,             # minimum severity level to record
+    format="%(asctime)s [%(levelname)s] %(message)s",  # timestamp + level + message
+    datefmt="%Y-%m-%d %H:%M:%S"     # human readable timestamp format
+)
+
+
 def validate_pdf(path_str: str) -> pypdf.PdfReader | None:
     path = Path(path_str).resolve()
+
     if not path.exists():
-        print(f"  [ERROR] File not found: {path}")
+        msg = f"File not found: {path}"
+        print(f"  [ERROR] {msg}")
+        logging.error(msg)           # Log the error to file
         return None
+
     if path.suffix.lower() != ".pdf":
-        print(f"  [ERROR] Not a PDF file: {path.name}")
+        msg = f"Not a PDF file: {path.name}"
+        print(f"  [ERROR] {msg}")
+        logging.error(msg)
         return None
+
     try:
         reader = pypdf.PdfReader(str(path))
+        logging.info(f"Opened successfully: {path.name} ({len(reader.pages)} pages)")
         print(f"  [OK] {path.name} ({len(reader.pages)} pages)")
         return reader
     except Exception as e:
-        print(f"  [ERROR] Could not read {path.name}: {e}")
+        msg = f"Could not read {path.name}: {e}"
+        print(f"  [ERROR] {msg}")
+        logging.error(msg)           # Log the exception details
         return None
 
 
@@ -28,38 +49,38 @@ def merge_pdfs(readers: list, output_path: Path) -> None:
     for reader in readers:
         for page in reader.pages:
             writer.add_page(page)
-    with open(output_path, "wb") as f:
-        writer.write(f)
-    print(f"\nMerged PDF saved to: {output_path}")
-    print(f"Total pages: {sum(len(r.pages) for r in readers)}")
+    try:
+        with open(output_path, "wb") as f:
+            writer.write(f)
+        logging.info(f"Merge complete: {output_path}")
+        print(f"\nMerged PDF saved to: {output_path}")
+        print(f"Total pages: {sum(len(r.pages) for r in readers)}")
+    except Exception as e:
+        msg = f"Failed to write merged PDF: {e}"
+        print(f"  [ERROR] {msg}")
+        logging.error(msg)
 
 
-# Split a PDF into one file per page
 def split_pdf(reader: pypdf.PdfReader, output_dir: Path) -> None:
-    # Create the output folder if it doesn't exist
     output_dir.mkdir(parents=True, exist_ok=True)
-
     total = len(reader.pages)
-
-    # zfill() pads a number with leading zeros to a fixed width
-    # so page 1 of 100 becomes "001" not "1" — sorts correctly in Finder
     width = len(str(total))
 
     for i, page in enumerate(reader.pages):
-        # enumerate() gives us both the index (i) and the value (page)
-        # i + 1 so pages start at 1 not 0
         page_number = str(i + 1).zfill(width)
         output_path = output_dir / f"page_{page_number}.pdf"
-
-        # Each page gets its own writer
         writer = pypdf.PdfWriter()
         writer.add_page(page)
+        try:
+            with open(output_path, "wb") as f:
+                writer.write(f)
+            print(f"  Saved: {output_path.name}")
+        except Exception as e:
+            msg = f"Failed to write {output_path.name}: {e}"
+            print(f"  [ERROR] {msg}")
+            logging.error(msg)
 
-        with open(output_path, "wb") as f:
-            writer.write(f)
-
-        print(f"  Saved: {output_path.name}")
-
+    logging.info(f"Split complete: {total} pages saved to {output_dir}")
     print(f"\nSplit complete. {total} pages saved to: {output_dir}")
 
 
@@ -104,7 +125,6 @@ def main():
         if not reader:
             return
 
-        # Resolve output dir and split
         output_dir = Path(args.output_dir).resolve()
         split_pdf(reader, output_dir)
 
